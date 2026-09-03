@@ -584,7 +584,7 @@ body.playing .pl-cover .spin-ring{opacity:.8}
 @keyframes toastIn{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}
 @keyframes toastOut{to{opacity:0;transform:translateY(10px) scale(.95)}}
 
-/* ============ РАДИО: мировой каталог (Audius + iTunes) ============ */
+/* ============ РАДИО: мировой каталог (Audius) ============ */
 .rd-head{
   position:relative;overflow:hidden;border-radius:var(--r-l);border:1px solid var(--line);padding:28px 30px 24px;
   background:
@@ -717,6 +717,23 @@ body.playing .pl-cover .spin-ring{opacity:.8}
   .ar-ava{width:132px;height:132px}
 }
 
+/* тизер загрузки своих файлов */
+.local-tease{
+  display:flex;align-items:center;gap:16px;margin:22px 0 4px;padding:18px 20px;
+  border:1.5px dashed color-mix(in srgb,#9ef01a 55%,var(--line2));border-radius:var(--r-l);
+  background:color-mix(in srgb,#9ef01a 6%,var(--panel));cursor:pointer;
+  transition:background .2s,border-color .2s,transform .2s;
+}
+.local-tease:hover{background:color-mix(in srgb,#9ef01a 11%,var(--panel));border-color:#9ef01a;transform:translateY(-2px)}
+.local-tease-ico{
+  width:46px;height:46px;flex:none;border-radius:13px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#9ef01a,#2ec4b6);color:#0c0d11;
+}
+.local-tease-ico svg{width:22px;height:22px}
+.local-tease-t{font-family:var(--disp);font-weight:700;font-size:15.5px}
+.local-tease-s{color:var(--mut);font-size:13px;margin-top:3px}
+@media (max-width:560px){ .local-tease{flex-wrap:wrap} .local-tease .btn-ghost{margin-left:0 !important;width:100%;justify-content:center} }
+
 @media (max-width:560px){
   .t-head,.t-row{grid-template-columns:32px minmax(0,1fr) 40px 36px;gap:10px}
   .rows-edit .t-head,.rows-edit .t-row{grid-template-columns:32px minmax(0,1fr) 40px 66px;gap:10px}
@@ -736,6 +753,7 @@ body.playing .pl-cover .spin-ring{opacity:.8}
 <body>
 
 <div id="bgfx"><div class="noise"></div></div>
+<input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple style="display:none" />
 
 <div id="app">
   <!-- ======== САЙДБАР ======== -->
@@ -1167,7 +1185,7 @@ const TRACKS = [
   { id:"t16", title:"Станция Туман",    artist:"НОЧНОЙ ЭКСПРЕСС", album:"a8", n:16, est:371 },
 ].map(t => ({ ...t, src:AUDIO(t.n) }));
 const byId = Object.fromEntries(TRACKS.map(t => [t.id, t]));
-const albumOf = t => ALBUMS.find(a => a.id === t.album);
+const albumOf = t => ALBUMS.find(a => a.id === t.album) || LOCAL_ALBUM;
 const genreOf = t => albumOf(t).genre;
 const dur = t => S.dur[t.id] || t.est;
 
@@ -1249,6 +1267,7 @@ function routeTitle(r){
     case "library": return "Твоя библиотека";
     case "radio": return "Радио · мировой каталог";
     case "artist": return r.param || "Исполнитель";
+    case "local": return "Мои треки";
     case "liked": return "Любимое";
     case "album": { const a = ALBUMS.find(a=>a.id===r.param); return a ? a.title : "Альбом"; }
     case "pl": { const p = EDITORIAL.find(p=>p.id===r.param); return p ? p.name : "Плейлист"; }
@@ -1277,6 +1296,14 @@ function getCollection(name, param){
     const p = S.userPl.find(p=>p.id===param); if(!p) return null;
     return { kind:"Твой плейлист", title:p.name, sub:"Автор — ты", cover:uplCover(p.name, p.accent || "#ffb454"), accent:p.accent || "#ffb454", ids:p.tracks, user:true, id:p.id };
   }
+  if(name === "local"){
+    return { kind:"Локальная библиотека", title:"Мои треки", sub:"Файлы с твоего устройства",
+      cover:LOCAL_ALBUM.cover, accent:"#9ef01a", ids:[...LOCAL], user:false, local:true,
+      desc:"Загружены с устройства · играют полностью · работают без интернета",
+      extra:'<button class="btn-ghost" data-action="pick-files">'+I.plus+' Добавить файлы</button>'
+        + (LOCAL.length ? '<button class="btn-ghost btn-danger" data-action="clear-local">'+I.trash+' Очистить всё</button>' : ''),
+      empty:{ icon:I.music, h:"Пока ни одного файла", p:"Нажми «Добавить файлы» — подойдут mp3, m4a, ogg, wav, flac. Треки сохранятся в этом приложении и будут играть полностью, даже без сети." } };
+  }
   return null;
 }
 
@@ -1285,13 +1312,16 @@ function likeBtn(id, extra){
   const on = S.liked.has(id);
   return '<button class="ib'+(on?" liked":"")+'" data-action="like" data-id="'+id+'" '+(extra||'')+' aria-label="В любимое">'+(on?I.heartF:I.heart)+'</button>';
 }
-function trackRow(t, i, ctxIds, plId){
+function trackRow(t, i, ctxIds, opts){
+  opts = opts || {};
   const a = albumOf(t);
   const now = currentId() === t.id;
   const ctxAttr = " data-ctx='" + JSON.stringify(ctxIds) + "'";
-  const rmBtn = plId
-    ? '<button class="ib rm" data-action="pl-remove" data-pl="'+plId+'" data-id="'+t.id+'" aria-label="Убрать из плейлиста" title="Убрать из плейлиста">'+I.x+'</button>'
-    : '';
+  const rmBtn = opts.plId
+    ? '<button class="ib rm" data-action="pl-remove" data-pl="'+opts.plId+'" data-id="'+t.id+'" aria-label="Убрать из плейлиста" title="Убрать из плейлиста">'+I.x+'</button>'
+    : (opts.localDel
+      ? '<button class="ib rm" data-action="del-local" data-id="'+t.id+'" aria-label="Удалить с устройства" title="Удалить с устройства">'+I.trash+'</button>'
+      : '');
   return '<div class="t-row'+(now?" now":"")+'" data-row="'+t.id+'">'
     + '<div class="t-idx"><span class="n-num">'+(i+1)+'</span>'
     + '<button class="n-play" data-action="play" data-id="'+t.id+'"'+ctxAttr+' aria-label="Играть">'+I.play+'</button>'
@@ -1303,10 +1333,10 @@ function trackRow(t, i, ctxIds, plId){
     + '<div class="t-act">'+rmBtn+'<button class="ib" data-action="ctx" data-id="'+t.id+'"'+ctxAttr+' aria-label="Ещё">'+I.dots+'</button></div>'
     + '</div>';
 }
-function trackList(ids, { albumCol = true, plId = null } = {}){
+function trackList(ids, { albumCol = true, plId = null, localDel = false } = {}){
   const head = '<div class="t-head"><div>#</div><div>Название</div>'+(albumCol?'<div class="h-al">Альбом</div>':'')+'<div></div><div class="h-dur">'+I.clock+'</div><div></div></div>';
-  const wrap = plId ? ' class="rows-edit"' : '';
-  return '<div'+wrap+'>'+head + ids.map((id,i)=>trackRow(byId[id], i, ids, plId)).join("")+'</div>';
+  const wrap = (plId || localDel) ? ' class="rows-edit"' : '';
+  return '<div'+wrap+'>'+head + ids.map((id,i)=>trackRow(byId[id], i, ids, { plId, localDel })).join("")+'</div>';
 }
 function cardCol({ cover, title, sub, route, ids, kicker, delId }){
   return '<div class="card rv" data-nav="'+route+'" tabindex="0">'
@@ -1342,10 +1372,11 @@ function detailView(c){
     + (empty ? '' : '<button class="btn-ghost" data-action="shuffle-play" data-ctx=\''+JSON.stringify(c.ids)+'\'>'+I.shuf+' Перемешать</button>')
     + (c.user ? '<button class="btn-ghost" data-action="edit-pl" data-id="'+c.id+'" title="Изменить плейлист">'+I.pencil+' Изменить</button>' : '')
     + (c.user ? '<button class="btn-ghost btn-danger" data-action="del-pl" data-id="'+c.id+'">'+I.trash+' Удалить</button>' : '')
+    + (c.extra || '')
     + '</div>'
     + (empty
-      ? '<div class="empty">'+I.heart+'<h3>Здесь пока тихо</h3><p>Добавляй треки через меню «⋯» → «Добавить в плейлист».</p></div>'
-      : '<div style="margin-top:18px">'+trackList(c.ids,{ albumCol: true, plId: c.user ? c.id : null })+'</div>')
+      ? '<div class="empty">'+(c.empty ? c.empty.icon : I.heart)+'<h3>'+(c.empty ? c.empty.h : 'Здесь пока тихо')+'</h3><p>'+(c.empty ? c.empty.p : 'Добавляй треки через меню «⋯» → «Добавить в плейлист».')+'</p></div>'
+      : '<div style="margin-top:18px">'+trackList(c.ids,{ albumCol: !c.local, plId: c.user ? c.id : null, localDel: !!c.local })+'</div>')
     + '</div>';
 }
 function plural(n){ const m10=n%10, m100=n%100; if(m10===1&&m100!==11) return ""; if(m10>=2&&m10<=4&&(m100<10||m100>=20)) return "а"; return "ов"; }
@@ -1376,6 +1407,20 @@ function homeView(){
       + '<div class="strip">' + recent.map(id=>{ const t=byId[id], a=albumOf(t);
         return '<div class="card rv" data-action="play" data-id="'+id+'" data-ctx=\''+JSON.stringify(recent)+'\' tabindex="0"><div class="card-cover"><img src="'+a.cover+'" alt="" loading="lazy"/></div><div class="card-title">'+esc(t.title)+'</div><div class="card-sub">'+esc(t.artist)+'</div></div>';
       }).join("") + '</div>';
+  }
+
+  if(LOCAL.length){
+    html += '<div class="sec-head rv"><span class="sec-title">Мои треки</span><button class="sec-link" data-nav="#/local">Все '+LOCAL.length+'</button></div>'
+      + '<div class="strip">' + LOCAL.slice(0,6).map(id=>{ const t=byId[id];
+        return '<div class="card rv" data-action="play" data-id="'+id+'" data-ctx=\''+JSON.stringify(LOCAL)+'\' tabindex="0"><div class="card-cover"><img src="'+t.cover+'" alt="" loading="lazy"/></div><div class="card-title">'+esc(t.title)+'</div><div class="card-sub">'+esc(t.artist)+' · с устройства</div></div>';
+      }).join("") + '</div>';
+  } else {
+    html += '<div class="rv local-tease" data-nav="#/local" tabindex="0">'
+      + '<span class="local-tease-ico">'+I.music+'</span>'
+      + '<div style="min-width:0"><div class="local-tease-t">Загрузи свою музыку</div>'
+      + '<div class="local-tease-s">MP3 с телефона или компьютера — играют полностью, без интернета. Хоть весь Овсянкин.</div></div>'
+      + '<button class="btn-ghost" data-action="pick-files" style="margin-left:auto;flex:none">'+I.plus+' Выбрать файлы</button>'
+      + '</div>';
   }
 
   html += '<div class="sec-head rv"><span class="sec-title">Чарт Эфира · топ-8</span><span class="sec-kicker" style="margin-left:auto">обновляется волной</span></div>'
@@ -1418,13 +1463,14 @@ function searchResults(q){
       + '<div class="sec-head"><span class="sec-title">Популярно сейчас</span></div>'
       + trackList(CHART.slice(0,6));
   }
+  const base = TRACKS.concat(LOCAL.map(id=>byId[id]).filter(Boolean));
   const match = t => (t.title+" "+t.artist+" "+albumOf(t).title+" "+genreOf(t)).toLowerCase().includes(q);
   const hi = s => esc(s).replace(new RegExp("("+q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","gi"), "<mark>$1</mark>");
   const type = S.searchType;
   let out = "";
-  const tracks = TRACKS.filter(match);
+  const tracks = base.filter(match);
   const albums = ALBUMS.filter(a => (a.title+" "+a.artist+" "+a.genre).toLowerCase().includes(q));
-  const artists = [...new Set(TRACKS.filter(t=>t.artist.toLowerCase().includes(q)).map(t=>t.artist))];
+  const artists = [...new Set(base.filter(t=>t.artist.toLowerCase().includes(q)).map(t=>t.artist))];
 
   if(type==="all" || type==="tracks"){
     if(tracks.length){
@@ -1449,14 +1495,15 @@ function searchResults(q){
     }
   }
   if(!out){
-    out = '<div class="empty">'+I.search+'<h3>Ничего не нашлось</h3><p>Попробуй другой запрос — например, «неон» или «АСТРА».</p></div>';
+    out = '<div class="empty">'+I.search+'<h3>Ничего не нашлось</h3><p>Попробуй другой запрос — например, «неон» или «АСТРА». Или загрузи свои mp3 в «Мои треки».</p></div>';
   }
   return out;
 }
 
 function libraryView(){
   const plCards =
-    cardCol({ cover:coverLiked(), title:"Любимое", sub:S.liked.size+" трек"+plural(S.liked.size), route:"#/liked", ids:[...S.liked].length?[...S.liked]:CHART })
+    cardCol({ cover:LOCAL_ALBUM.cover, title:"Мои треки", sub:LOCAL.length ? LOCAL.length+" трек"+plural(LOCAL.length)+" · "+localSizeStr() : "загрузить свои mp3", route:"#/local", ids:[...LOCAL], kicker:"с устройства" })
+    + cardCol({ cover:coverLiked(), title:"Любимое", sub:S.liked.size+" трек"+plural(S.liked.size), route:"#/liked", ids:[...S.liked].length?[...S.liked]:CHART })
     + S.userPl.map(p=>plCard(p, "#/upl/"+p.id, p.tracks, uplCover(p.name, p.accent||"#ffb454"), p.accent, p.id)).join("")
     + EDITORIAL.map(p=>plCard(p, "#/pl/"+p.id, p.tracks, p.cover, p.accent)).join("");
   return '<div class="vin">'
@@ -1522,7 +1569,7 @@ function artistView(name){
     html += '<div class="sec-head rv"><span class="sec-title">Треки</span><span class="sec-kicker" style="margin-left:auto">'+ids.length+'</span></div>'
       + '<div>'+trackList(ids)+'</div>';
   } else {
-    html += '<div class="empty">'+I.music+'<h3>В локальном каталоге пусто</h3><p>Зато на радио найдётся — мировые каталоги Audius и iTunes уже ждут.</p></div>';
+    html += '<div class="empty">'+I.music+'<h3>В каталоге Эфира пусто</h3><p>Зато в Audius найдётся — жми «Ещё треки — на радио». А свои mp3 грузи в «Мои треки».</p></div>';
   }
   if(albums.length){
     html += '<div class="sec-head rv"><span class="sec-title">Альбомы</span></div><div class="strip">'+albums.map(albumCard).join("")+'</div>';
@@ -1530,22 +1577,212 @@ function artistView(name){
   html += '<div class="sec-head rv"><span class="sec-title">С радио — весь мир</span><span class="sec-kicker" style="margin-left:auto">бесплатные API</span></div>'
     + '<div class="card rv" data-nav="#/radio/'+radioQ+'" tabindex="0" style="display:flex;align-items:center;gap:16px;padding:18px">'
     + '<span class="rd-vinyl" style="width:52px;height:52px;flex:none;animation:none"></span>'
-    + '<div style="min-width:0"><div class="card-title" style="margin-top:0">Найти «'+esc(name)+'» в мировых каталогах</div>'
-    + '<div class="card-sub">Audius · полные треки независимых артистов &nbsp;＋&nbsp; iTunes · превью мировых хитов</div></div>'
+    + '<div style="min-width:0"><div class="card-title" style="margin-top:0">Найти «'+esc(name)+'» в открытом каталоге Audius</div>'
+    + '<div class="card-sub">Бесплатное API · полные треки независимых артистов со всего мира</div></div>'
     + '<span class="rd-pbtn" style="margin-left:auto;opacity:1"><button class="ib" aria-label="На радио" style="opacity:1">'+I.play+'</button></span>'
     + '</div>'
     + '</div>';
   return html;
 }
 
-/* ---------- РАДИО: мировые каталоги через бесплатные API ----------
-   Audius  — api.audius.co → хост → /v1/tracks/* — полные треки, CORS открыт, ключ не нужен.
-   iTunes  — itunes.apple.com/search — превью мировых хитов по 30 c, CORS открыт, ключ не нужен. */
+/* ---------- ЛОКАЛЬНЫЕ ФАЙЛЫ: загрузка с устройства, полное воспроизведение ----------
+   Файлы играют через objectURL (полностью, офлайн) и хранятся в IndexedDB браузера —
+   переживают перезапуск приложения и в WebView2, и в Android WebView. */
+const LOCAL = [];
+const LOCAL_ALBUM = { id:"local", title:"Мои треки", artist:"Загружено с устройства", year:new Date().getFullYear(), genre:"Файлы", accent:"#9ef01a", cover:plCover("local","#9ef01a","#2ec4b6") };
+const HAS_IDB = typeof indexedDB !== "undefined";
+let dbPromise = null;
+function openDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((res, rej)=>{
+    const rq = indexedDB.open("efir", 1);
+    rq.onupgradeneeded = ()=>{ rq.result.createObjectStore("tracks", { keyPath:"id" }); };
+    rq.onsuccess = ()=>res(rq.result);
+    rq.onerror = ()=>rej(rq.error);
+  });
+  return dbPromise;
+}
+async function dbPut(rec){
+  const db = await openDB();
+  return new Promise((res, rej)=>{
+    const tx = db.transaction("tracks","readwrite");
+    tx.objectStore("tracks").put(rec);
+    tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function dbAll(){
+  const db = await openDB();
+  return new Promise((res, rej)=>{
+    const rq = db.transaction("tracks","readonly").objectStore("tracks").getAll();
+    rq.onsuccess = ()=>res(rq.result || []); rq.onerror = ()=>rej(rq.error);
+  });
+}
+async function dbDel(id){
+  const db = await openDB();
+  return new Promise((res, rej)=>{
+    const tx = db.transaction("tracks","readwrite");
+    tx.objectStore("tracks").delete(id);
+    tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+  });
+}
+function localCover(title, artist){
+  const pal = [["#9ef01a","#2ec4b6"],["#4cc9f0","#c77dff"],["#ffb454","#ff6b57"],["#f72585","#e0a458"],["#2ec4b6","#4cc9f0"],["#c77dff","#f72585"]];
+  let h = 0; const s = title + artist;
+  for(let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  const [c1, c2] = pal[h % pal.length];
+  const ini = (title.trim()[0] || "♪").toUpperCase();
+  const bars = [0,1,2,3,4].map(i=>{
+    const bh = 40 + ((h >> (i*3)) % 90);
+    return '<rect x="'+(352+i*34)+'" y="'+(460-bh)+'" width="16" height="'+bh+'" rx="8" fill="#f1efe9" fill-opacity="0.85"/>';
+  }).join("");
+  return svgUri(
+    '<defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+c1+'"/><stop offset="100%" stop-color="'+c2+'"/></linearGradient></defs>',
+    '<rect width="600" height="600" fill="url(#lg)"/>'
+    + '<circle cx="180" cy="210" r="120" fill="none" stroke="#0c0d11" stroke-opacity="0.25" stroke-width="26"/>'
+    + '<circle cx="180" cy="210" r="34" fill="#0c0d11" fill-opacity="0.3"/>'
+    + '<text x="300" y="330" text-anchor="middle" font-family="Arial, sans-serif" font-weight="800" font-size="230" fill="#0c0d11" fill-opacity="0.28">'+esc(ini)+'</text>'
+    + bars
+  );
+}
+function parseFileName(name){
+  const base = name.replace(/\.[^.]+$/, "").replace(/_/g, " ").trim();
+  const m = base.split(/\s+[-–—]\s+/);
+  if(m.length >= 2) return { artist: m[0].trim(), title: m.slice(1).join(" — ").trim() };
+  return { artist: "Неизвестный исполнитель", title: base || name };
+}
+function probeAudio(file){
+  return new Promise(res=>{
+    const u = URL.createObjectURL(file);
+    const a = new Audio();
+    a.preload = "metadata";
+    let done = false;
+    const finish = d=>{ if(done) return; done = true; URL.revokeObjectURL(u); res({ dur: isFinite(d) ? d : 0 }); };
+    a.addEventListener("loadedmetadata", ()=>finish(a.duration), { once:true });
+    a.addEventListener("error", ()=>finish(0), { once:true });
+    setTimeout(()=>finish(a.duration || 0), 5000);
+    a.src = u;
+  });
+}
+function registerLocal(rec){
+  const t = {
+    id: rec.id, title: rec.title, artist: rec.artist, album: "local", local: true,
+    src: URL.createObjectURL(rec.blob), est: rec.dur || 0,
+    cover: localCover(rec.title, rec.artist), fname: rec.name, size: rec.size || 0, addedAt: rec.addedAt || Date.now(),
+  };
+  byId[t.id] = t;
+  LOCAL.push(t.id);
+  return t;
+}
+async function initLocal(){
+  if(!HAS_IDB) return;
+  try{
+    const recs = await dbAll();
+    if(!recs.length) return;
+    recs.sort((a,b)=>(b.addedAt||0)-(a.addedAt||0)).forEach(registerLocal);
+    renderSidebar();
+    const r = parseRoute();
+    if(["home","library","local","liked"].includes(r.name)) render();
+  }catch(e){}
+}
+function localSizeStr(){
+  const bytes = LOCAL.reduce((s,id)=>s+(byId[id].size||0), 0);
+  if(bytes > 1048576*1024) return (bytes/1073741824).toFixed(2)+" ГБ";
+  if(bytes > 1048576) return (bytes/1048576).toFixed(1)+" МБ";
+  return Math.max(1, Math.round(bytes/1024))+" КБ";
+}
+function deleteLocal(id, silent){
+  const t = byId[id]; if(!t || !t.local) return;
+  // если играет — глушим плеер
+  if(currentId() === id){
+    audio.pause(); audio.removeAttribute("src"); try{ audio.load(); }catch(e){}
+    S.q = []; S.order = []; S.oi = -1;
+    S.playing = false; S.loading = false;
+    updatePlayButtons(); updatePlayerMeta(); renderQueue();
+    document.title = "Эфир — твой музыкальный вейв";
+  } else {
+    const qi = S.q.indexOf(id);
+    if(qi >= 0){
+      const cur = curQi();
+      S.q.splice(qi, 1);
+      rebuildOrderAt(qi < cur ? cur - 1 : cur);
+      renderQueue();
+    }
+  }
+  S.liked.delete(id); store.set("liked", [...S.liked]);
+  S.userPl.forEach(p=>{ p.tracks = p.tracks.filter(x=>x!==id); });
+  store.set("userPl", S.userPl);
+  S.recent = S.recent.filter(x=>x!==id); store.set("recent", S.recent);
+  try{ URL.revokeObjectURL(t.src); }catch(e){}
+  delete byId[id];
+  LOCAL.splice(LOCAL.indexOf(id), 1);
+  if(HAS_IDB) dbDel(id).catch(()=>{});
+  if(!silent){
+    renderSidebar();
+    toast("«"+t.title+"» удалён с устройства", I.trash);
+    render();
+  }
+}
+function confirmDeleteLocal(id){
+  const t = byId[id]; if(!t) return;
+  openModal({
+    title: "Удалить «"+t.title+"»?",
+    ok: "Удалить", danger: true,
+    onOk(){ deleteLocal(id); }
+  });
+}
+function confirmClearLocal(){
+  if(!LOCAL.length) return;
+  openModal({
+    title: "Удалить все загруженные треки?",
+    ok: "Удалить всё", danger: true,
+    onOk(){
+      [...LOCAL].forEach(id=>deleteLocal(id, true));
+      renderSidebar();
+      toast("Локальная библиотека очищена", I.trash);
+      render();
+    }
+  });
+}
+async function handleFiles(fileList){
+  const files = [...fileList];
+  if(!files.length) return;
+  let ok = 0, bad = 0;
+  toast("Читаем файлы…", I.music);
+  for(const f of files){
+    const okType = /^audio\//.test(f.type) || /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i.test(f.name);
+    if(!okType){ bad++; continue; }
+    try{
+      const meta = await probeAudio(f);
+      const parsed = parseFileName(f.name);
+      const rec = {
+        id: "loc_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+        name: f.name, title: parsed.title, artist: parsed.artist,
+        size: f.size, type: f.type || "audio/mpeg", dur: meta.dur,
+        addedAt: Date.now(), blob: f,
+      };
+      if(HAS_IDB) await dbPut(rec);
+      registerLocal(rec);
+      ok++;
+    }catch(e){ bad++; }
+  }
+  renderSidebar();
+  const r = parseRoute();
+  if(["local","library","home","liked"].includes(r.name)) render();
+  if(ok){
+    toast("Добавлено "+ok+" трек"+plural(ok)+(bad ? " · пропущено "+bad : "")+(HAS_IDB ? "" : " · без сохранения"), I.music);
+    if(r.name !== "local") nav("#/local");
+  } else {
+    toast("Не удалось прочитать файлы — нужны аудиоформаты", I.volX);
+  }
+}
+
+/* ---------- РАДИО: мировой каталог через бесплатный API Audius ----------
+   api.audius.co → хост → /v1/tracks/* — полные треки, CORS открыт, ключ не нужен. */
 const EX = {};                    // внешние треки по eid
 let AUD_HOST = null;              // закешированный хост Audius
 const AUD_FALLBACK = ["https://discoveryprovider.audius.co","https://discoveryprovider2.audius.co","https://discoveryprovider3.audius.co"];
 const APP_NAME = "efir";
-const RD_GENRES = [["Фонк","phonk"],["Синтвейв","synthwave"],["Lo-Fi","lofi"],["Техно","techno"],["Хип-хоп","hip hop"],["Эмбиент","ambient"],["Drum & Bass","drum and bass"],["Джаз","jazz"]];
+const RD_GENRES = [["Русский рэп","russian rap"],["Фонк","phonk russian"],["Пост-панк","russian post punk"],["Синтвейв","synthwave"],["Lo-Fi","lofi"],["Техно","techno"],["Эмбиент","ambient"],["DnB","drum and bass"],["Джаз","jazz"]];
 let radioReq = 0, lastRadioQ = "";
 
 function jfetch(url, ms){
@@ -1580,20 +1817,6 @@ function mapAudius(list, host){
     EX[o.eid] = o; return o;
   });
 }
-function mapItunes(list){
-  return (list||[]).filter(t=>t && t.previewUrl).map(t=>{
-    const o = { eid:"it_"+t.trackId, src:"itunes", title:t.trackName||"Без названия",
-      artist:t.artistName||"iTunes",
-      cover:String(t.artworkUrl100||"").replace("100x100","600x600") || plCover("focus","#ffb454","#3a2a08"),
-      url:t.previewUrl, dur:0 };
-    EX[o.eid] = o; return o;
-  });
-}
-function interleave(a, b){
-  const r = [], n = Math.max(a.length, b.length);
-  for(let i=0;i<n;i++){ if(a[i]) r.push(a[i]); if(b[i]) r.push(b[i]); }
-  return r;
-}
 function rdStatus(html){ const el = $("#rdStatus"); if(el) el.innerHTML = html; }
 function rdSpinner(msg){ return '<span class="rd-vinyl"></span><span>'+msg+'</span>'; }
 function rdFail(msg){
@@ -1607,10 +1830,10 @@ function radioView(){
     + '<section class="rd-head rv in">'
     + '<div class="rd-live"><span class="live-dot"></span>прямой эфир · мировой каталог</div>'
     + '<h1 class="rd-title">Радио</h1>'
-    + '<p class="rd-sub">Ищет музыку по всему миру. <b>Audius</b> — независимые артисты, треки играют целиком. '
-    + '<b>iTunes</b> — превью мировых хитов по 30 секунд. Всё через бесплатные публичные API, ключи не нужны.</p>'
-    + '<div class="rd-sources"><span class="rd-src"><i style="background:#2ec4b6"></i>Audius · полные треки</span>'
-    + '<span class="rd-src"><i style="background:#ffb454"></i>iTunes · превью 30 c</span></div>'
+    + '<p class="rd-sub">Открытый мировой каталог <b>Audius</b> — независимые артисты со всей планеты, '
+    + 'треки играют <b>полностью</b>. Бесплатный публичный API, ключи не нужны. Свои mp3 грузи в «Мои треки».</p>'
+    + '<div class="rd-sources"><span class="rd-src"><i style="background:#2ec4b6"></i>Audius · бесплатное API · полные треки</span>'
+    + '<span class="rd-src"><i style="background:#9ef01a"></i>Мои треки · с устройства · офлайн</span></div>'
     + '</section>'
     + '<div class="rd-box rv in">'+I.search+'<input id="radioInput" class="rd-input" placeholder="Артист, трек или жанр — например «The Weeknd» или «phonk»" maxlength="60" autocomplete="off"/></div>'
     + '<div class="rd-chips rv in">'+RD_GENRES.map(g=>'<button class="chip" data-action="radio-chip" data-q="'+g[1]+'">'+g[0]+'</button>').join("")+'</div>'
@@ -1654,29 +1877,23 @@ async function loadTrending(){
 async function radioSearch(q){
   lastRadioQ = q;
   const my = ++radioReq;
-  rdStatus(rdSpinner("Ищем «"+esc(q)+"» по всему миру…"));
-  const hostP = audHost();
-  const itP = jfetch("https://itunes.apple.com/search?media=music&limit=18&term="+encodeURIComponent(q))
-    .then(j=>mapItunes(j.results)).catch(()=>null);
-  const host = await hostP;
-  const auP = host
-    ? jfetch(host+"/v1/tracks/search?query="+encodeURIComponent(q)+"&limit=18&app_name="+APP_NAME)
-        .then(j=>mapAudius(j.data, host)).catch(()=>null)
-    : Promise.resolve(null);
-  const [it, au] = await Promise.all([itP, auP]);
+  rdStatus(rdSpinner("Ищем «"+esc(q)+"» в Audius…"));
+  const host = await audHost();
+  if(!host){ if(my !== radioReq) return; rdFail("Не удалось подключиться к Audius. Проверь интернет — эфир требует сеть."); return; }
+  let au = null;
+  try{
+    const j = await jfetch(host+"/v1/tracks/search?query="+encodeURIComponent(q)+"&limit=20&app_name="+APP_NAME);
+    au = mapAudius(j.data, host);
+  }catch(e){}
   if(my !== radioReq) return;               // устаревший запрос — игнорируем
-  if(!it && !au){ rdFail("Оба источника молчат. Проверь интернет и повтори."); return; }
-  const items = interleave(au||[], it||[]);
-  if(!items.length){
+  if(!au){ rdFail("Audius не ответил. Проверь интернет и повтори."); return; }
+  if(!au.length){
     rdStatus("");
     const l = $("#rdList");
-    if(l) l.innerHTML = '<div class="rd-state">'+I.search+'<h3>По запросу «'+esc(q)+'» пусто</h3><p>Попробуй другое написание или жанровые чипы выше.</p></div>';
+    if(l) l.innerHTML = '<div class="rd-state">'+I.search+'<h3>По запросу «'+esc(q)+'» пусто</h3><p>Попробуй другое написание или жанровые чипы выше. Свои mp3 можно загрузить в «Мои треки».</p></div>';
     return;
   }
-  let note = "«"+esc(q)+"» — найдено "+items.length+" трек"+plural(items.length);
-  if(!au) note += ' · <span style="color:var(--bad)">Audius недоступен</span>';
-  if(!it) note += ' · <span style="color:var(--bad)">iTunes недоступен</span>';
-  renderRadioList(items, note);
+  renderRadioList(au, "«"+esc(q)+"» — найдено "+au.length+" трек"+plural(au.length)+" · Audius, играют полностью");
 }
 function renderRadioList(items, note){
   rdStatus('<span style="display:inline-flex;align-items:center;gap:8px"><span class="live-dot" style="background:var(--ok);animation:none"></span>'+note+'</span>');
@@ -1687,10 +1904,8 @@ function renderRadioList(items, note){
 }
 function extRow(t){
   const now = !!(S.ext && S.ext.eid === t.eid);
-  const badge = t.src === "audius"
-    ? '<span class="rd-badge au">Audius · full</span>'
-    : '<span class="rd-badge it">iTunes · 30c</span>';
-  const d = t.src === "itunes" ? "0:30" : (t.dur ? fmt(t.dur) : "—");
+  const badge = '<span class="rd-badge au">Audius · full</span>';
+  const d = t.dur ? fmt(t.dur) : "—";
   return '<div class="rd-row rv'+(now?" now":"")+'" data-action="play-ext" data-eid="'+t.eid+'" tabindex="0" role="button">'
     + '<div class="rd-main"><div class="rd-cov"><img src="'+t.cover+'" alt="" loading="lazy" referrerpolicy="no-referrer"/><span class="rd-p">'+I.play+'</span></div>'
     + '<div style="min-width:0"><div class="rd-tt">'+esc(t.title)+'</div><div class="rd-ar">'+esc(t.artist)+'</div></div></div>'
@@ -1709,7 +1924,7 @@ function extAccent(t){
   return EXT_ACCENTS[h % EXT_ACCENTS.length];
 }
 function extMetaToUI(t){
-  const badge = t.src === "audius" ? "Audius · полный трек" : "iTunes · превью 30 c";
+  const badge = "Audius · полный трек";
   $("#plMeta").innerHTML = '<div class="pl-tt">'+esc(t.title)+'</div><div class="pl-ar">'+esc(t.artist)+' · '+badge+'</div>';
   $("#plCover").src = t.cover;
   $("#ovCover").src = t.cover;
@@ -1727,7 +1942,7 @@ function mediaMetaExt(t){
   if(!("mediaSession" in navigator)) return;
   try{
     navigator.mediaSession.metadata = new MediaMetadata({
-      title:t.title, artist:t.artist, album: t.src === "audius" ? "Audius" : "iTunes",
+      title:t.title, artist:t.artist, album:"Audius",
       artwork: t.cover ? [{ src:t.cover, sizes:"600x600", type:"image/jpeg" }] : []
     });
   }catch(e){}
@@ -1762,7 +1977,7 @@ function render(){
     case "library": html = libraryView(); break;
     case "radio": html = radioView(); break;
     case "artist": html = artistView(r.param); break;
-    case "liked": case "album": case "pl": case "upl": {
+    case "liked": case "album": case "pl": case "upl": case "local": {
       const c = getCollection(r.name, r.param);
       html = c ? detailView(c) : '<div class="empty">'+I.music+'<h3>Не найдено</h3><p>Такой страницы в эфире нет.</p></div>';
       break;
@@ -1803,7 +2018,10 @@ function render(){
 function renderSidebar(){
   const list = $("#plList");
   const items =
-    '<button class="pl-item'+(parseRoute().name==="liked"?" on":"")+'" data-nav="#/liked">'
+    '<button class="pl-item'+(parseRoute().name==="local"?" on":"")+'" data-nav="#/local">'
+    + '<span class="pl-ico" style="background:linear-gradient(135deg,#9ef01a,#2ec4b6)">'+I.music+'</span>'
+    + '<span style="min-width:0"><div class="pl-name">Мои треки</div><div class="pl-meta">'+(LOCAL.length ? LOCAL.length+" трек"+plural(LOCAL.length)+" · с устройства" : "загрузить свои файлы")+'</div></span></button>'
+    + '<button class="pl-item'+(parseRoute().name==="liked"?" on":"")+'" data-nav="#/liked">'
     + '<span class="pl-ico" style="background:linear-gradient(135deg,#f72585,#ffb454)">'+I.heartF+'</span>'
     + '<span style="min-width:0"><div class="pl-name">Любимое</div><div class="pl-meta">'+S.liked.size+' трек'+plural(S.liked.size)+'</div></span></button>'
     + S.userPl.map(p=>'<button class="pl-item'+(parseRoute().param===p.id?" on":"")+'" data-nav="#/upl/'+p.id+'">'
@@ -2181,6 +2399,9 @@ document.addEventListener("click", e => {
     case "pl-remove": removeTrackFromPl(actEl.dataset.pl, id); break;
     case "edit-pl": openPlEditor(actEl.dataset.id); break;
     case "play-ext": playExternal(actEl.dataset.eid); break;
+    case "pick-files": $("#fileInput").click(); break;
+    case "del-local": confirmDeleteLocal(actEl.dataset.id); break;
+    case "clear-local": confirmClearLocal(); break;
     case "radio-chip": {
       const inp = $("#radioInput"); if(inp) inp.value = actEl.textContent.trim();
       radioSearch(actEl.dataset.q); break;
@@ -2250,6 +2471,7 @@ function setVolume(v){
 }
 $("#volRange").addEventListener("input", e => setVolume(+e.target.value / 100));
 $("#volRange").addEventListener("wheel", e => { e.preventDefault(); setVolume(S.volume + (e.deltaY < 0 ? .05 : -.05)); }, { passive:false });
+$("#fileInput").addEventListener("change", e => { handleFiles(e.target.files); e.target.value = ""; });
 
 /* ---------- контекстное меню трека ---------- */
 function openTrackMenu(anchor, id, ctxIds){
@@ -2268,7 +2490,7 @@ function openTrackMenu(anchor, id, ctxIds){
     + '<button class="ctx-i" data-action="q-end" data-qid="'+id+'">'+I.nextQ+' В конец очереди</button>'
     + '<div class="ctx-sep"></div>'
     + '<button class="ctx-i" data-action="like" data-id="'+id+'">'+(liked?I.heartF:I.heart)+' '+(liked?'Убрать из любимого':'В любимое')+'</button>'
-    + '<button class="ctx-i" data-nav="#/album/'+t.album+'">'+I.album+' К альбому «'+esc(albumOf(t).title)+'»</button>'
+    + (t.local ? '<button class="ctx-i" data-action="del-local" data-id="'+id+'">'+I.trash+' Удалить с устройства</button>' : '<button class="ctx-i" data-nav="#/album/'+t.album+'">'+I.album+' К альбому «'+esc(albumOf(t).title)+'»</button>')
     + '<div class="ctx-sep"></div>'
     + plSection
     + '<div class="ctx-label">Добавить в плейлист</div>'
@@ -2412,6 +2634,7 @@ function openPlEditor(pid){
   setupSeek($("#ovPbar"), $("#ovFill"));
   render();
   preloadDurations();
+  initLocal();
   requestAnimationFrame(tick);
 })();
 </script>
