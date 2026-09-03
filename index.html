@@ -69,12 +69,14 @@ a{color:inherit;text-decoration:none}
 }
 
 /* ============ КАРКАС ============ */
+/* position:fixed+inset надёжнее, чем 100dvh: работает во всех WebView,
+   включая старые Android System WebView и Edge без WebView2-рантайма */
 #app{
-  position:relative;z-index:1;height:100dvh;
+  position:fixed;inset:0;z-index:1;
   display:grid;grid-template-columns:264px minmax(0,1fr);
   padding:10px 10px 0;gap:10px;
 }
-#maincol{display:flex;flex-direction:column;min-width:0;padding-bottom:102px}
+#maincol{display:flex;flex-direction:column;min-width:0;min-height:0;padding-bottom:102px}
 #sidebar{
   background:linear-gradient(180deg,var(--panel),#12141b);
   border:1px solid var(--line);border-radius:var(--r-l);
@@ -165,6 +167,7 @@ a{color:inherit;text-decoration:none}
 /* ---- основной скролл ---- */
 #view{
   flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y;
   background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 66%,transparent),color-mix(in srgb,var(--panel) 30%,transparent) 260px,transparent 520px);
   border:1px solid var(--line);border-radius:var(--r-l);
   padding:26px 26px 40px;position:relative;
@@ -293,6 +296,12 @@ body:not(.playing) .n-eq i{animation-play-state:paused;transform:scaleY(.35)}
 .t-dur{font-size:13px;color:var(--mut);text-align:right;font-variant-numeric:tabular-nums}
 .t-act{display:flex;gap:2px;justify-content:flex-end;opacity:0;transition:opacity .16s}
 .t-row:hover .t-act,.t-row.now .t-act{opacity:1}
+/* режим редактирования плейлиста: кнопки видны всегда, колонка действий шире */
+.rows-edit .t-head,.rows-edit .t-row{grid-template-columns:38px minmax(0,1fr) minmax(0,.72fr) 44px 56px 74px}
+.rows-edit .t-act{opacity:1}
+.t-act .ib.rm{color:var(--dim)}
+.t-act .ib.rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 13%,transparent)}
+@media (hover:none),(pointer:coarse){.t-act{opacity:1}}
 .ib{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--mut);transition:.15s;flex:none}
 .ib svg{width:17px;height:17px}
 .ib:hover{color:var(--text);background:var(--panel3)}
@@ -469,9 +478,18 @@ body.playing .pl-cover .spin-ring{opacity:.8}
 #overlay.open .ov-art{animation:breathe 7s ease-in-out infinite}
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
 .ov-art img{width:100%;height:100%;object-fit:cover}
-.ov-meta{margin-top:4vh;text-align:center;max-width:640px}
+.ov-meta{margin-top:4vh;max-width:640px;width:100%;display:flex;align-items:center;justify-content:center;gap:14px}
+.ov-meta .ov-tx{min-width:0;text-align:center;flex:0 1 auto}
 .ov-tt{font-family:var(--disp);font-weight:700;font-size:clamp(20px,3vw,30px);line-height:1.15}
 .ov-ar{color:var(--mut);margin-top:8px;font-size:15px}
+#ovLike{
+  width:46px;height:46px;border-radius:50%;flex:none;font-size:0;
+  border:1px solid var(--line2);background:rgba(10,11,16,.42);color:#cfd3dd;
+}
+#ovLike:hover{transform:scale(1.08);border-color:color-mix(in srgb,#f72585 55%,var(--line2))}
+#ovLike.liked{color:#f72585;border-color:color-mix(in srgb,#f72585 55%,var(--line2))}
+#ovLike.liked svg{fill:#f72585}
+#ovLike svg{width:20px;height:20px}
 .ov-prog{width:min(560px,88vw);margin-top:3.4vh}
 .ov-btns{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:2.4vh}
 .ov-btns .pbtn{width:44px;height:44px;color:#cfd3dd}
@@ -514,6 +532,38 @@ body.playing .pl-cover .spin-ring{opacity:.8}
 .m-no{height:42px;padding:0 18px;border-radius:999px;border:1px solid var(--line2);font-weight:600;font-size:13.5px;color:var(--mut)}
 .m-no:hover{color:var(--text)}
 
+/* ---- редактор плейлиста ---- */
+.modal-wide{width:min(600px,calc(100vw - 24px));max-height:min(760px,92vh);display:flex;flex-direction:column}
+.pe-label{font-size:10.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin:16px 0 8px}
+.pe-label:first-of-type{margin-top:0}
+.pe-swatches{display:flex;gap:9px;flex-wrap:wrap}
+.pe-sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;transition:.15s;position:relative}
+.pe-sw:hover{transform:scale(1.14)}
+.pe-sw.on{border-color:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--bg) 90%,transparent),0 4px 14px -4px currentColor}
+.pe-list{
+  margin:2px -6px 0;padding:4px 6px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  min-height:64px;max-height:34vh;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--panel2) 60%,transparent);
+}
+.pe-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 4px;border-radius:9px;transition:background .14s}
+.pe-row:hover{background:var(--panel3)}
+.pe-row img{width:38px;height:38px;border-radius:7px;object-fit:cover}
+.pe-tt{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pe-ar{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.pe-btns{display:flex;gap:1px}
+.pe-btns .ib{width:29px;height:29px;border-radius:7px}
+.pe-btns .ib svg{width:15px;height:15px}
+.pe-btns .ib[disabled]{opacity:.22;pointer-events:none}
+.pe-btns .ib.pe-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 13%,transparent)}
+.pe-empty{padding:20px;text-align:center;color:var(--dim);font-size:13.5px}
+.pe-foot{display:flex;align-items:center;gap:10px;margin-top:18px}
+.pe-del{display:inline-flex;align-items:center;gap:7px;color:#ff9d90;font-size:13px;font-weight:600;padding:8px 4px;transition:.15s}
+.pe-del svg{width:16px;height:16px}
+.pe-del:hover{color:var(--bad)}
+.pe-foot .modal-btns{margin-top:0;margin-left:auto}
+.pe-label-row{display:flex;align-items:center}
+.pe-clear{margin-left:auto;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--dim);padding:3px 8px;border-radius:7px;transition:.15s}
+.pe-clear:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)}
+
 #toasts{position:fixed;bottom:108px;left:50%;transform:translateX(-50%);z-index:400;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .toast{
   display:flex;align-items:center;gap:10px;background:#1d2029;border:1px solid var(--line2);
@@ -531,11 +581,13 @@ body.playing .pl-cover .spin-ring{opacity:.8}
 /* ============ АДАПТИВ ============ */
 @media (max-width:1180px){
   .t-head,.t-row{grid-template-columns:38px minmax(0,1fr) 44px 56px 40px}
+  .rows-edit .t-head,.rows-edit .t-row{grid-template-columns:38px minmax(0,1fr) 44px 56px 74px}
   .t-al,.t-head .h-al{display:none}
 }
 @media (max-width:960px){
   #app{grid-template-columns:1fr;padding:0;gap:0}
   #sidebar{display:none}
+  .rows-edit .t-head,.rows-edit .t-row{grid-template-columns:38px minmax(0,1fr) 44px 56px 74px}
   #maincol{padding-bottom:172px}
   #view{border-radius:0;border-left:0;border-right:0;padding:18px 16px 30px}
   #topbar{padding:12px 16px 8px}
@@ -561,6 +613,7 @@ body.playing .pl-cover .spin-ring{opacity:.8}
 }
 @media (max-width:560px){
   .t-head,.t-row{grid-template-columns:32px minmax(0,1fr) 40px 36px;gap:10px}
+  .rows-edit .t-head,.rows-edit .t-row{grid-template-columns:32px minmax(0,1fr) 40px 66px;gap:10px}
   .t-dur,.t-head .h-dur{display:none}
   .t-main img{width:38px;height:38px}
   .hero{padding:22px 20px}
@@ -717,8 +770,11 @@ body.playing .pl-cover .spin-ring{opacity:.8}
   </div>
   <div class="ov-art"><img id="ovCover" alt="" /></div>
   <div class="ov-meta">
-    <div class="ov-tt" id="ovTitle">—</div>
-    <div class="ov-ar" id="ovArtist"></div>
+    <div class="ov-tx">
+      <div class="ov-tt" id="ovTitle">—</div>
+      <div class="ov-ar" id="ovArtist"></div>
+    </div>
+    <button class="ib" id="ovLike" data-action="like" aria-label="В любимое" title="В любимое (L)"></button>
   </div>
   <div class="ov-prog prog">
     <span class="time" id="ovCur">0:00</span>
@@ -798,6 +854,10 @@ const I = {
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
   album: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>',
   wand:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 19 10-10M13 6l1.5-1.5M18 11l1.5-1.5M19 4v2M20 17v2M13 3h2M7 17v2M4 8h2"/></svg>',
+  pencil:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3.5a2.1 2.1 0 0 1 3 3L8.5 18l-4.2 1.2L5.5 15z"/><path d="m14.5 6 3 3"/></svg>',
+  x:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  up:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 6-6 6 6"/></svg>',
+  down:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 10 6 6 6-6"/></svg>',
 };
 
 /* ---------- генеративные обложки (SVG → data URI) ---------- */
@@ -1109,10 +1169,13 @@ function likeBtn(id, extra){
   const on = S.liked.has(id);
   return '<button class="ib'+(on?" liked":"")+'" data-action="like" data-id="'+id+'" '+(extra||'')+' aria-label="В любимое">'+(on?I.heartF:I.heart)+'</button>';
 }
-function trackRow(t, i, ctxIds){
+function trackRow(t, i, ctxIds, plId){
   const a = albumOf(t);
   const now = currentId() === t.id;
   const ctxAttr = " data-ctx='" + JSON.stringify(ctxIds) + "'";
+  const rmBtn = plId
+    ? '<button class="ib rm" data-action="pl-remove" data-pl="'+plId+'" data-id="'+t.id+'" aria-label="Убрать из плейлиста" title="Убрать из плейлиста">'+I.x+'</button>'
+    : '';
   return '<div class="t-row'+(now?" now":"")+'" data-row="'+t.id+'">'
     + '<div class="t-idx"><span class="n-num">'+(i+1)+'</span>'
     + '<button class="n-play" data-action="play" data-id="'+t.id+'"'+ctxAttr+' aria-label="Играть">'+I.play+'</button>'
@@ -1121,12 +1184,13 @@ function trackRow(t, i, ctxIds){
     + '<div class="t-al" data-nav="#/album/'+a.id+'">'+esc(a.title)+'</div>'
     + '<div>'+likeBtn(t.id)+'</div>'
     + '<div class="t-dur" data-dur="'+t.id+'">'+fmt(dur(t))+'</div>'
-    + '<div class="t-act"><button class="ib" data-action="ctx" data-id="'+t.id+'"'+ctxAttr+' aria-label="Ещё">'+I.dots+'</button></div>'
+    + '<div class="t-act">'+rmBtn+'<button class="ib" data-action="ctx" data-id="'+t.id+'"'+ctxAttr+' aria-label="Ещё">'+I.dots+'</button></div>'
     + '</div>';
 }
-function trackList(ids, { albumCol = true } = {}){
+function trackList(ids, { albumCol = true, plId = null } = {}){
   const head = '<div class="t-head"><div>#</div><div>Название</div>'+(albumCol?'<div class="h-al">Альбом</div>':'')+'<div></div><div class="h-dur">'+I.clock+'</div><div></div></div>';
-  return head + ids.map((id,i)=>trackRow(byId[id], i, ids)).join("");
+  const wrap = plId ? ' class="rows-edit"' : '';
+  return '<div'+wrap+'>'+head + ids.map((id,i)=>trackRow(byId[id], i, ids, plId)).join("")+'</div>';
 }
 function cardCol({ cover, title, sub, route, ids, kicker }){
   return '<div class="card rv" data-nav="'+route+'" tabindex="0">'
@@ -1159,11 +1223,12 @@ function detailView(c){
     + '<div class="d-actions">'
     + '<button class="btn-big" data-action="'+(empty?"noop":"play")+'" data-id="'+(c.ids[0]||"")+'" data-ctx=\''+JSON.stringify(c.ids)+'\' '+(empty?"disabled style=\"opacity:.45;pointer-events:none\"":"")+'>'+I.play+' Слушать</button>'
     + (empty ? '' : '<button class="btn-ghost" data-action="shuffle-play" data-ctx=\''+JSON.stringify(c.ids)+'\'>'+I.shuf+' Перемешать</button>')
+    + (c.user ? '<button class="btn-ghost" data-action="edit-pl" data-id="'+c.id+'" title="Изменить плейлист">'+I.pencil+' Изменить</button>' : '')
     + (c.user ? '<button class="btn-ghost btn-danger" data-action="del-pl" data-id="'+c.id+'">'+I.trash+' Удалить</button>' : '')
     + '</div>'
     + (empty
       ? '<div class="empty">'+I.heart+'<h3>Здесь пока тихо</h3><p>Добавляй треки через меню «⋯» → «Добавить в плейлист».</p></div>'
-      : '<div style="margin-top:18px">'+trackList(c.ids,{ albumCol: !c.meta })+'</div>')
+      : '<div style="margin-top:18px">'+trackList(c.ids,{ albumCol: !c.meta, plId: c.user ? c.id : null })+'</div>')
     + '</div>';
 }
 function plural(n){ const m10=n%10, m100=n%100; if(m10===1&&m100!==11) return ""; if(m10>=2&&m10<=4&&(m100<10||m100>=20)) return "а"; return "ов"; }
@@ -1517,6 +1582,7 @@ function updatePlayerMeta(){
     $("#ovCover").src = $("#plCover").src; $("#ov-bg").style.backgroundImage = "";
     $("#ovTitle").textContent = "Эфир ждёт"; $("#ovArtist").textContent = "выбери трек";
     $("#plLike").innerHTML = I.heart; $("#plLike").dataset.id = ""; $("#plLike").classList.remove("liked");
+    $("#ovLike").innerHTML = I.heart; $("#ovLike").classList.remove("liked");
     $("#ovNext").innerHTML = "";
     return;
   }
@@ -1531,6 +1597,9 @@ function updatePlayerMeta(){
   lb.dataset.id = t.id;
   lb.classList.toggle("liked", S.liked.has(t.id));
   lb.innerHTML = S.liked.has(t.id) ? I.heartF : I.heart;
+  const ol = $("#ovLike");
+  ol.classList.toggle("liked", S.liked.has(t.id));
+  ol.innerHTML = S.liked.has(t.id) ? I.heartF : I.heart;
   const nqi = S.order[S.oi+1];
   const nt = nqi !== undefined ? byId[S.q[nqi]] : null;
   $("#ovNext").innerHTML = nt ? 'Дальше: <b>'+esc(nt.title)+'</b> · '+esc(nt.artist) : 'Это последний трек очереди';
@@ -1706,7 +1775,9 @@ document.addEventListener("click", e => {
     case "prev": prevTrack(); break;
     case "shuffle": toggleShuffle(); break;
     case "repeat": cycleRepeat(); break;
-    case "like": toggleLike(id || actEl.dataset.id); break;
+    case "like": toggleLike(id || currentId()); break;
+    case "pl-remove": removeTrackFromPl(actEl.dataset.pl, id); break;
+    case "edit-pl": openPlEditor(actEl.dataset.id); break;
     case "toggle-queue": $("#queue").classList.toggle("open"); updateToggles(); break;
     case "open-overlay": if(currentId()) $("#overlay").classList.add("open"); break;
     case "close-overlay": $("#overlay").classList.remove("open"); break;
@@ -1776,12 +1847,15 @@ $("#volRange").addEventListener("wheel", e => { e.preventDefault(); setVolume(S.
 function openTrackMenu(anchor, id, ctxIds){
   const t = byId[id]; if(!t) return;
   const liked = S.liked.has(id);
+  const route = parseRoute();
+  const inPl = route.name === "upl" && S.userPl.some(p=>p.id===route.param);
   const plSection = S.userPl.length
     ? '<div class="ctx-label">Мои плейлисты</div>' + S.userPl.map(p=>
         '<button class="ctx-i" data-action="add-to-pl" data-pl="'+p.id+'" data-id="'+id+'">'+I.plus+' '+esc(p.name)+'</button>').join("")
     : '';
   openCtxMenu(anchor,
-    '<button class="ctx-i" data-action="play" data-id="'+id+'" data-ctx=\''+JSON.stringify(ctxIds || ALL_IDS)+'\'>'+I.play+' Играть</button>'
+    (inPl ? '<button class="ctx-i" data-action="pl-remove" data-pl="'+route.param+'" data-id="'+id+'">'+I.x+' Убрать из плейлиста</button><div class="ctx-sep"></div>' : '')
+    + '<button class="ctx-i" data-action="play" data-id="'+id+'" data-ctx=\''+JSON.stringify(ctxIds || ALL_IDS)+'\'>'+I.play+' Играть</button>'
     + '<button class="ctx-i" data-action="q-next" data-qid="'+id+'">'+I.nextQ+' Играть следующим</button>'
     + '<button class="ctx-i" data-action="q-end" data-qid="'+id+'">'+I.nextQ+' В конец очереди</button>'
     + '<div class="ctx-sep"></div>'
@@ -1822,7 +1896,7 @@ function newPlaylistModal(withTrack){
 function confirmDeletePl(pid){
   const pl = S.userPl.find(p=>p.id===pid); if(!pl) return;
   openModal({
-    title: "Удалить плейлист?",
+    title: "Удалить плейлист «"+pl.name+"»?",
     ok: "Удалить", danger: true,
     onOk(){
       S.userPl = S.userPl.filter(p=>p.id!==pid);
@@ -1832,6 +1906,89 @@ function confirmDeletePl(pid){
       nav("#/library");
     }
   });
+}
+function saveUserPl(){ store.set("userPl", S.userPl); renderSidebar(); }
+function removeTrackFromPl(pid, trackId){
+  const pl = S.userPl.find(p=>p.id===pid); if(!pl) return;
+  const i = pl.tracks.indexOf(trackId); if(i < 0) return;
+  pl.tracks.splice(i, 1);
+  saveUserPl();
+  toast("«"+byId[trackId].title+"» — убрано из «"+pl.name+"»", I.x);
+  const r = parseRoute();
+  if((r.name === "upl" && r.param === pid) || r.name === "library") render();
+}
+/* ---- редактор плейлиста: название, цвет, порядок и состав треков ---- */
+function openPlEditor(pid){
+  const pl = S.userPl.find(p=>p.id===pid); if(!pl) return;
+  const root = $("#modal-root");
+  const draft = { name: pl.name, accent: pl.accent || PL_ACCENTS[0], tracks: [...pl.tracks] };
+  const renderRows = () => {
+    const box = $("#peList"); if(!box) return;
+    box.innerHTML = draft.tracks.length
+      ? draft.tracks.map((id,i)=>{
+          const t = byId[id], a = albumOf(t);
+          return '<div class="pe-row"><img src="'+a.cover+'" alt=""/>'
+            + '<div style="min-width:0"><div class="pe-tt">'+esc(t.title)+'</div><div class="pe-ar">'+esc(t.artist)+'</div></div>'
+            + '<div class="pe-btns">'
+            + '<button class="ib" data-pe="up" data-i="'+i+'" '+(i===0?'disabled':'')+' aria-label="Выше">'+I.up+'</button>'
+            + '<button class="ib" data-pe="down" data-i="'+i+'" '+(i===draft.tracks.length-1?'disabled':'')+' aria-label="Ниже">'+I.down+'</button>'
+            + '<button class="ib pe-rm" data-pe="rm" data-i="'+i+'" aria-label="Убрать">'+I.x+'</button>'
+            + '</div></div>';
+        }).join("")
+      : '<div class="pe-empty">Треков пока нет — добавляй через «⋯» → «Добавить в плейлист»</div>';
+  };
+  root.innerHTML = '<div class="modal modal-wide">'
+    + '<h3>Редактирование плейлиста</h3>'
+    + '<div class="pe-label">Название</div>'
+    + '<input id="peName" maxlength="40" value="'+esc(draft.name)+'" />'
+    + '<div class="pe-label">Цвет обложки</div>'
+    + '<div class="pe-swatches">' + PL_ACCENTS.map(c=>
+        '<button class="pe-sw'+(c===draft.accent?" on":"")+'" data-c="'+c+'" style="background:'+c+';color:'+c+'" aria-label="Цвет '+c+'"></button>').join("") + '</div>'
+    + '<div class="pe-label pe-label-row"><span>Треки · <span id="peCount">'+draft.tracks.length+'</span></span>'
+    + '<button class="pe-clear" id="peClear">ОЧИСТИТЬ ВСЁ</button></div>'
+    + '<div class="pe-list" id="peList"></div>'
+    + '<div class="pe-foot">'
+    + '<button class="pe-del" id="peDel">'+I.trash+' Удалить плейлист</button>'
+    + '<div class="modal-btns"><button class="m-no" id="peCancel">Отмена</button>'
+    + '<button class="m-ok" id="peSave">Сохранить</button></div>'
+    + '</div></div>';
+  root.classList.add("open");
+  renderRows();
+  setTimeout(()=>{ const inp=$("#peName"); inp.focus(); inp.select(); }, 40);
+
+  root.querySelector(".pe-swatches").addEventListener("click", e=>{
+    const sw = e.target.closest(".pe-sw"); if(!sw) return;
+    draft.accent = sw.dataset.c;
+    root.querySelectorAll(".pe-sw").forEach(s=>s.classList.toggle("on", s===sw));
+  });
+  $("#peList").addEventListener("click", e=>{
+    const b = e.target.closest("[data-pe]"); if(!b) return;
+    const i = +b.dataset.i;
+    if(b.dataset.pe === "rm") draft.tracks.splice(i, 1);
+    if(b.dataset.pe === "up" && i > 0){ const x = draft.tracks.splice(i,1)[0]; draft.tracks.splice(i-1,0,x); }
+    if(b.dataset.pe === "down" && i < draft.tracks.length-1){ const x = draft.tracks.splice(i,1)[0]; draft.tracks.splice(i+1,0,x); }
+    $("#peCount").textContent = draft.tracks.length;
+    renderRows();
+  });
+  const close = ()=>{ root.classList.remove("open"); root.innerHTML=""; document.removeEventListener("keydown", onKey); };
+  const onKey = e=>{ if(e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  root.onclick = e=>{ if(e.target === root) close(); };
+  $("#peCancel").onclick = close;
+  $("#peClear").onclick = ()=>{ draft.tracks.length = 0; $("#peCount").textContent = 0; renderRows(); };
+  $("#peDel").onclick = ()=>{ close(); confirmDeletePl(pid); };
+  $("#peSave").onclick = ()=>{
+    const name = $("#peName").value.trim();
+    if(!name){ $("#peName").focus(); toast("Название не может быть пустым", I.wand); return; }
+    pl.name = name;
+    pl.accent = draft.accent;
+    pl.tracks = [...draft.tracks];
+    saveUserPl();
+    close();
+    toast("Плейлист «"+name+"» обновлён", I.pencil);
+    const r = parseRoute();
+    if(r.name === "upl" && r.param === pid) render();
+  };
 }
 
 /* ---------- старт ---------- */
